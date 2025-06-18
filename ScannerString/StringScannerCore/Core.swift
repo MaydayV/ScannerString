@@ -107,8 +107,8 @@ public class ProjectScanner {
     }
     
     private func scanFile(at url: URL) throws {
-        let source = try String(contentsOf: url)
-        let sourceFile = try Parser.parse(source: source)
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let sourceFile = Parser.parse(source: source)
         
         let operatorTable = OperatorTable.standardOperators
         let foldedFile = try operatorTable.foldAll(sourceFile)

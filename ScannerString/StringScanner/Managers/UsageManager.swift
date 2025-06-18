@@ -4,49 +4,57 @@ import Foundation
 class UsageManager: ObservableObject {
     static let shared = UsageManager()
     
-    @Published private(set) var lastScanDate: Date?
+    @Published private(set) var remainingScans: Int = 10
     @Published private(set) var canScanToday: Bool = true
     
     private let userDefaults = UserDefaults.standard
-    private let lastScanDateKey = "lastScanDate"
+    private let remainingScansKey = "remainingScans"
+    private let lastResetDateKey = "lastResetDate"
     
     private init() {
-        loadLastScanDate()
-        checkDailyLimit()
+        loadRemainingScans()
+        checkDailyReset()
     }
     
-    private func loadLastScanDate() {
-        if let date = userDefaults.object(forKey: lastScanDateKey) as? Date {
-            lastScanDate = date
+    private func loadRemainingScans() {
+        remainingScans = userDefaults.integer(forKey: remainingScansKey)
+        if remainingScans == 0 {
+            remainingScans = 10
         }
     }
     
-    private func checkDailyLimit() {
-        guard let lastScan = lastScanDate else {
-            canScanToday = true
-            return
+    private func checkDailyReset() {
+        if let lastResetDate = userDefaults.object(forKey: lastResetDateKey) as? Date {
+            let calendar = Calendar.current
+            let today = Date()
+            
+            if !calendar.isDate(lastResetDate, inSameDayAs: today) {
+                // 新的一天，重置使用次数
+                remainingScans = 10
+                userDefaults.set(remainingScans, forKey: remainingScansKey)
+                userDefaults.set(today, forKey: lastResetDateKey)
+            }
+        } else {
+            // 首次使用，设置重置日期
+            userDefaults.set(Date(), forKey: lastResetDateKey)
         }
-        
-        let calendar = Calendar.current
-        let today = Date()
-        
-        canScanToday = !calendar.isDate(lastScan, inSameDayAs: today)
     }
     
     func recordScan() {
-        lastScanDate = Date()
-        userDefaults.set(lastScanDate, forKey: lastScanDateKey)
-        canScanToday = false
+        if !StoreManager.shared.hasUnlimitedSubscription {
+            remainingScans -= 1
+            userDefaults.set(remainingScans, forKey: remainingScansKey)
+        }
     }
     
     func canPerformScan() -> Bool {
-        return StoreManager.shared.hasUnlimitedSubscription || canScanToday
+        return StoreManager.shared.hasUnlimitedSubscription || remainingScans > 0
     }
     
     func remainingScansToday() -> Int {
         if StoreManager.shared.hasUnlimitedSubscription {
             return Int.max
         }
-        return canScanToday ? 1 : 0
+        return remainingScans
     }
 } 

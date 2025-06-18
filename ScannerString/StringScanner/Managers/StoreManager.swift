@@ -45,7 +45,7 @@ class StoreManager: ObservableObject {
         case .verified(let transaction):
             // 确保在主线程上更新 UI
             await MainActor.run {
-                Task {
+                _ = Task {
                     await self.updatePurchasedProducts()
                 }
             }
