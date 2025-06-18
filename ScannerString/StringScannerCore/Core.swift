@@ -165,6 +165,8 @@ public class StringVisitor: SyntaxVisitor {
         
         guard !content.isEmpty else { return .skipChildren }
         
+        guard !shouldIgnoreString(content) else { return .skipChildren }
+        
         let isLocalized = isInLocalizationContext(node)
         
         strings.append(StringLocation(
@@ -176,6 +178,47 @@ public class StringVisitor: SyntaxVisitor {
         ))
         
         return .skipChildren
+    }
+    
+    private func shouldIgnoreString(_ content: String) -> Bool {
+        guard !content.isEmpty else { return true }
+        
+        // 没有中文则忽略
+        let chineseRegex = try? NSRegularExpression(pattern: "[\\u4e00-\\u9fa5]", options: [])
+        if let regex = chineseRegex, regex.firstMatch(in: content, options: [], range: NSRange(location: 0, length: content.utf16.count)) == nil {
+            return true
+        }
+        
+        guard !content.hasPrefix("com.") else { return true }
+        
+        let imageExtensions = ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp"]
+        if imageExtensions.contains(where: { content.lowercased().hasSuffix(".\($0)") }) {
+            return true
+        }
+        
+        let specialCharacters = CharacterSet(charactersIn: "!@#$%^&*()_+-=[]{}|;:,.<>?/~`")
+        if content.unicodeScalars.allSatisfy({ specialCharacters.contains($0) }) {
+            return true
+        }
+        
+        if content.unicodeScalars.allSatisfy({ $0.properties.isEmoji }) {
+            return true
+        }
+        
+        let regexPatterns = [
+            #"^[\\/].*[\\/][a-z]*$"#,
+            #"^[\\/].*[\\/]$"#,
+            #"^[\\/].*$"#,
+            #"^.*[\\/]$"#
+        ]
+        
+        for pattern in regexPatterns {
+            if content.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        
+        return false
     }
     
     private func isInLocalizationContext(_ node: StringLiteralExprSyntax) -> Bool {
