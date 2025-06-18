@@ -4,7 +4,7 @@ import Foundation
 class UsageManager: ObservableObject {
     static let shared = UsageManager()
     
-    @Published private(set) var remainingScans: Int = 10
+    @Published private(set) var remainingScans: Int = 100
     @Published private(set) var canScanToday: Bool = true
     
     private let userDefaults = UserDefaults.standard
