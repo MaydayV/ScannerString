@@ -14,6 +14,7 @@ class ScannerViewModel: ObservableObject {
     @Published var currentFile: String = ""
     @Published var processedFiles: Int = 0
     @Published var totalFiles: Int = 0
+    @Published var uniqueStringsCount: Int = 0
     
     private let scanner = ProjectScanner()
     private let fileManager = FileManager.default
@@ -56,6 +57,7 @@ class ScannerViewModel: ObservableObject {
         currentFile = ""
         processedFiles = 0
         totalFiles = 0
+        uniqueStringsCount = 0
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.scanProject(at: self?.selectedPath ?? "")
@@ -148,7 +150,28 @@ class ScannerViewModel: ObservableObject {
     }
     
     private func outputResults() {
-        results = allStrings.sorted {
+        // 对字符串去重
+        var uniqueStrings: [String: StringLocation] = [:]
+        
+        // 首先对所有字符串进行排序
+        let sortedStrings = allStrings.sorted {
+            $0.file == $1.file ?
+                ($0.line == $1.line ? $0.column < $1.column : $0.line < $1.line) :
+                $0.file < $1.file
+        }
+        
+        // 遍历排序后的字符串并保留每个唯一内容的第一个出现
+        for string in sortedStrings {
+            if uniqueStrings[string.content] == nil {
+                uniqueStrings[string.content] = string
+            }
+        }
+        
+        // 更新唯一字符串计数
+        uniqueStringsCount = uniqueStrings.count
+        
+        // 转换回数组并重新排序
+        results = uniqueStrings.values.sorted {
             $0.file == $1.file ?
                 ($0.line == $1.line ? $0.column < $1.column : $0.line < $1.line) :
                 $0.file < $1.file
@@ -237,9 +260,12 @@ class ScannerViewModel: ObservableObject {
                 let stringsURL = languageURL.appendingPathComponent("Localizable.strings")
                 var stringsContent = ""
                 
-                for result in results {
+                // 使用唯一的字符串集合
+                let uniqueContents = Set(results.map { $0.content })
+                
+                for content in uniqueContents {
                     // 转义字符串中的特殊字符
-                    let escapedContent = result.content
+                    let escapedContent = content
                         .replacingOccurrences(of: "\"", with: "\\\"")
                         .replacingOccurrences(of: "\n", with: "\\n")
                     
@@ -287,9 +313,12 @@ class ScannerViewModel: ObservableObject {
                   "strings" : {
                 """
                 
-                for (index, result) in results.enumerated() {
+                // 使用唯一的字符串集合
+                let uniqueContents = Array(Set(results.map { $0.content }))
+                
+                for (index, content) in uniqueContents.enumerated() {
                     // 转义字符串中的特殊字符
-                    let escapedContent = result.content
+                    let escapedContent = content
                         .replacingOccurrences(of: "\"", with: "\\\"")
                         .replacingOccurrences(of: "\n", with: "\\n")
                     
@@ -305,7 +334,7 @@ class ScannerViewModel: ObservableObject {
                               }
                             }
                           }
-                        }\(index < results.count - 1 ? "," : "")
+                        }\(index < uniqueContents.count - 1 ? "," : "")
                     """
                 }
                 
@@ -317,7 +346,7 @@ class ScannerViewModel: ObservableObject {
                 """
                 
                 // 确保文件不为空
-                if results.isEmpty {
+                if uniqueContents.isEmpty {
                     xcstringsContent = """
                     {
                       "sourceLanguage" : "en",

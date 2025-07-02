@@ -183,7 +183,8 @@ struct SidebarView: View {
                 // 扫描统计卡片
                 CardView(title: "扫描统计".localized, icon: "chart.bar") {
                     VStack(spacing: 8) {
-                        StatItem(icon: "text.quote", title: "字符串数量".localized, value: "\(viewModel.results.count)")
+                        StatItem(icon: "text.quote", title: "原始字符串数量".localized, value: "\(viewModel.results.count)")
+                        StatItem(icon: "text.quote.rtl", title: "去重后字符串数量".localized, value: "\(viewModel.uniqueStringsCount)")
                         StatItem(icon: "doc.text", title: "文件数量".localized, value: "\(Set(viewModel.results.map { $0.file }).count)")
                     }
                 }

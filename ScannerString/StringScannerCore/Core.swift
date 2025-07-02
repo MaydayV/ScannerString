@@ -24,6 +24,7 @@ public struct StringLocation: Codable, Hashable {
     public let column: Int
     public let content: String
     public let isLocalized: Bool
+    public let uniqueIdentifier: String
     
     public init(file: String, line: Int, column: Int, content: String, isLocalized: Bool) {
         self.file = file
@@ -31,6 +32,7 @@ public struct StringLocation: Codable, Hashable {
         self.column = column
         self.content = content
         self.isLocalized = isLocalized
+        self.uniqueIdentifier = content
     }
     
     public func hash(into hasher: inout Hasher) {
@@ -85,7 +87,21 @@ public class ProjectScanner {
     }
     
     public func getScanResults() -> [StringLocation] {
-        return allStrings.sorted {
+        var uniqueStrings: [String: StringLocation] = [:]
+        
+        let sortedStrings = allStrings.sorted {
+            $0.file == $1.file ?
+                ($0.line == $1.line ? $0.column < $1.column : $0.line < $1.line) :
+                $0.file < $1.file
+        }
+        
+        for string in sortedStrings {
+            if uniqueStrings[string.content] == nil {
+                uniqueStrings[string.content] = string
+            }
+        }
+        
+        return uniqueStrings.values.sorted {
             $0.file == $1.file ?
                 ($0.line == $1.line ? $0.column < $1.column : $0.line < $1.line) :
                 $0.file < $1.file
@@ -183,10 +199,13 @@ public class StringVisitor: SyntaxVisitor {
     private func shouldIgnoreString(_ content: String) -> Bool {
         guard !content.isEmpty else { return true }
         
-        // 没有中文则忽略
         let chineseRegex = try? NSRegularExpression(pattern: "[\\u4e00-\\u9fa5]", options: [])
         if let regex = chineseRegex, regex.firstMatch(in: content, options: [], range: NSRange(location: 0, length: content.utf16.count)) == nil {
             return true
+        }
+        
+        if content.count > 20 {
+            return false
         }
         
         guard !content.hasPrefix("com.") else { return true }
