@@ -183,9 +183,27 @@ struct SidebarView: View {
                 // 扫描统计卡片
                 CardView(title: "扫描统计".localized, icon: "chart.bar") {
                     VStack(spacing: 8) {
-                        StatItem(icon: "text.quote", title: "原始字符串数量".localized, value: "\(viewModel.results.count)")
-                        StatItem(icon: "text.quote.rtl", title: "去重后字符串数量".localized, value: "\(viewModel.uniqueStringsCount)")
+                        StatItem(icon: "text.quote", title: "字符串数量".localized, value: "\(viewModel.results.count)")
                         StatItem(icon: "doc.text", title: "文件数量".localized, value: "\(Set(viewModel.results.map { $0.file }).count)")
+                        
+                        // 新增：重复字符串统计
+                        StatItem(
+                            icon: "repeat", 
+                            title: "去重前数量".localized, 
+                            value: "\(viewModel.totalStringsBeforeDedupe)"
+                        )
+                        
+                        if viewModel.totalStringsBeforeDedupe > 0 {
+                            let duplicatesRemoved = viewModel.totalStringsBeforeDedupe - viewModel.results.count
+                            let percentage = viewModel.totalStringsBeforeDedupe > 0 ? 
+                                Int((Double(duplicatesRemoved) / Double(viewModel.totalStringsBeforeDedupe)) * 100) : 0
+                            
+                            StatItem(
+                                icon: "arrow.2.squarepath", 
+                                title: "已去重".localized, 
+                                value: "\(duplicatesRemoved) (\(percentage)%)"
+                            )
+                        }
                     }
                 }
                 
@@ -334,8 +352,22 @@ struct ResultsView: View {
                 VStack {
                     List(viewModel.results, id: \.self) { result in
                         VStack(alignment: .leading, spacing: 4) {
+                            // 显示原始内容
                             Text(result.content)
                                 .font(.body)
+                            
+                            // 如果处理后的内容与原始内容不同（包含参数），则显示处理后的内容
+                            if result.content != result.processedContent {
+                                HStack {
+                                    Text("处理后:".localized)
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                    
+                                    Text(result.processedContent)
+                                        .font(.body)
+                                        .foregroundColor(.blue)
+                                }
+                            }
                             
                             HStack {
                                 Text(result.file)

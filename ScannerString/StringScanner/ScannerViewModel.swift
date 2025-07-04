@@ -14,7 +14,7 @@ class ScannerViewModel: ObservableObject {
     @Published var currentFile: String = ""
     @Published var processedFiles: Int = 0
     @Published var totalFiles: Int = 0
-    @Published var uniqueStringsCount: Int = 0
+    @Published var totalStringsBeforeDedupe: Int = 0
     
     private let scanner = ProjectScanner()
     private let fileManager = FileManager.default
@@ -57,7 +57,7 @@ class ScannerViewModel: ObservableObject {
         currentFile = ""
         processedFiles = 0
         totalFiles = 0
-        uniqueStringsCount = 0
+        totalStringsBeforeDedupe = 0
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.scanProject(at: self?.selectedPath ?? "")
@@ -150,32 +150,28 @@ class ScannerViewModel: ObservableObject {
     }
     
     private func outputResults() {
-        // 对字符串去重
-        var uniqueStrings: [String: StringLocation] = [:]
+        totalStringsBeforeDedupe = allStrings.count
         
-        // 首先对所有字符串进行排序
-        let sortedStrings = allStrings.sorted {
+        // 先按文件、行、列排序
+        let sortedResults = allStrings.sorted {
             $0.file == $1.file ?
                 ($0.line == $1.line ? $0.column < $1.column : $0.line < $1.line) :
                 $0.file < $1.file
         }
         
-        // 遍历排序后的字符串并保留每个唯一内容的第一个出现
-        for string in sortedStrings {
-            if uniqueStrings[string.content] == nil {
-                uniqueStrings[string.content] = string
+        // 然后去重
+        var uniqueResults: [StringLocation] = []
+        var processedSet = Set<String>()
+        
+        for result in sortedResults {
+            if !processedSet.contains(result.processedContent) {
+                uniqueResults.append(result)
+                processedSet.insert(result.processedContent)
             }
         }
         
-        // 更新唯一字符串计数
-        uniqueStringsCount = uniqueStrings.count
-        
-        // 转换回数组并重新排序
-        results = uniqueStrings.values.sorted {
-            $0.file == $1.file ?
-                ($0.line == $1.line ? $0.column < $1.column : $0.line < $1.line) :
-                $0.file < $1.file
-        }
+        // 将去重后的结果赋值给 results
+        results = uniqueResults
     }
     
     func exportToJSON() {
@@ -192,9 +188,20 @@ class ScannerViewModel: ObservableObject {
             guard let url = savePanel.url else { return }
             
             do {
+                // 去重处理
+                var uniqueStrings: [StringLocation] = []
+                var processedSet = Set<String>()
+                
+                for result in results {
+                    if !processedSet.contains(result.processedContent) {
+                        uniqueStrings.append(result)
+                        processedSet.insert(result.processedContent)
+                    }
+                }
+                
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(results)
+                let data = try encoder.encode(uniqueStrings)
                 try data.write(to: url)
             } catch {
                 errorMessage = "Failed to export JSON: \(error.localizedDescription)"
@@ -216,13 +223,25 @@ class ScannerViewModel: ObservableObject {
             guard let url = savePanel.url else { return }
             
             do {
-                var csvString = "String,File,Line,Column,Is Localized\n"
+                var csvString = "String,Processed String,File,Line,Column,Is Localized\n"
+                
+                // 去重处理
+                var uniqueStrings: [StringLocation] = []
+                var processedSet = Set<String>()
                 
                 for result in results {
+                    if !processedSet.contains(result.processedContent) {
+                        uniqueStrings.append(result)
+                        processedSet.insert(result.processedContent)
+                    }
+                }
+                
+                for result in uniqueStrings {
                     let escapedContent = result.content.replacingOccurrences(of: "\"", with: "\"\"")
+                    let escapedProcessedContent = result.processedContent.replacingOccurrences(of: "\"", with: "\"\"")
                     let escapedFile = result.file.replacingOccurrences(of: "\"", with: "\"\"")
                     
-                    csvString += "\"\(escapedContent)\",\"\(escapedFile)\",\(result.line),\(result.column),\"\(result.isLocalized ? "Yes" : "No")\"\n"
+                    csvString += "\"\(escapedContent)\",\"\(escapedProcessedContent)\",\"\(escapedFile)\",\(result.line),\(result.column),\"\(result.isLocalized ? "Yes" : "No")\"\n"
                 }
                 
                 try csvString.write(to: url, atomically: true, encoding: .utf8)
@@ -260,17 +279,25 @@ class ScannerViewModel: ObservableObject {
                 let stringsURL = languageURL.appendingPathComponent("Localizable.strings")
                 var stringsContent = ""
                 
-                // 使用唯一的字符串集合
-                let uniqueContents = Set(results.map { $0.content })
+                // 创建集合去重
+                var processedStrings = Set<String>()
                 
-                for content in uniqueContents {
-                    // 转义字符串中的特殊字符
-                    let escapedContent = content
+                for result in results {
+                    // 如果这个处理后的内容已经添加过，则跳过
+                    if processedStrings.contains(result.processedContent) {
+                        continue
+                    }
+                    
+                    // 标记这个内容已经处理过
+                    processedStrings.insert(result.processedContent)
+                    
+                    // 处理后的内容（带参数处理）
+                    let escapedProcessedContent = result.processedContent
                         .replacingOccurrences(of: "\"", with: "\\\"")
                         .replacingOccurrences(of: "\n", with: "\\n")
                     
-                    // 使用字符串内容作为 key 和值
-                    stringsContent += "\"\(escapedContent)\" = \"\(escapedContent)\";\n"
+                    // 使用处理后的内容作为 key，原始内容作为值
+                    stringsContent += "\"\(escapedProcessedContent)\" = \"\(escapedProcessedContent)\";\n"
                 }
                 
                 // 确保文件不为空
@@ -313,28 +340,42 @@ class ScannerViewModel: ObservableObject {
                   "strings" : {
                 """
                 
-                // 使用唯一的字符串集合
-                let uniqueContents = Array(Set(results.map { $0.content }))
+                // 创建集合去重
+                var processedStrings = Set<String>()
+                var validResults: [(String, String)] = []
                 
-                for (index, content) in uniqueContents.enumerated() {
+                // 先收集所有需要处理的字符串，并去重
+                for result in results {
+                    if !processedStrings.contains(result.processedContent) {
+                        processedStrings.insert(result.processedContent)
+                        validResults.append((result.processedContent, result.processedContent))
+                    }
+                }
+                
+                // 然后生成 XCStrings 内容
+                for (index, (key, value)) in validResults.enumerated() {
                     // 转义字符串中的特殊字符
-                    let escapedContent = content
+                    let escapedKey = key
+                        .replacingOccurrences(of: "\"", with: "\\\"")
+                        .replacingOccurrences(of: "\n", with: "\\n")
+                    
+                    let escapedValue = value
                         .replacingOccurrences(of: "\"", with: "\\\"")
                         .replacingOccurrences(of: "\n", with: "\\n")
                     
                     xcstringsContent += """
                     
-                        "\(escapedContent)" : {
+                        "\(escapedKey)" : {
                           "extractionState" : "manual",
                           "localizations" : {
                             "en" : {
                               "stringUnit" : {
                                 "state" : "translated",
-                                "value" : "\(escapedContent)"
+                                "value" : "\(escapedValue)"
                               }
                             }
                           }
-                        }\(index < uniqueContents.count - 1 ? "," : "")
+                        }\(index < validResults.count - 1 ? "," : "")
                     """
                 }
                 
@@ -346,7 +387,7 @@ class ScannerViewModel: ObservableObject {
                 """
                 
                 // 确保文件不为空
-                if uniqueContents.isEmpty {
+                if validResults.isEmpty {
                     xcstringsContent = """
                     {
                       "sourceLanguage" : "en",

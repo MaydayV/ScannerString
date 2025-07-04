@@ -19,7 +19,7 @@ class UsageManager: ObservableObject {
     private func loadRemainingScans() {
         remainingScans = userDefaults.integer(forKey: remainingScansKey)
         if remainingScans == 0 {
-            remainingScans = 10
+            remainingScans = 100
         }
     }
     
@@ -30,7 +30,7 @@ class UsageManager: ObservableObject {
             
             if !calendar.isDate(lastResetDate, inSameDayAs: today) {
                 // 新的一天，重置使用次数
-                remainingScans = 10
+                remainingScans = 100
                 userDefaults.set(remainingScans, forKey: remainingScansKey)
                 userDefaults.set(today, forKey: lastResetDateKey)
             }
